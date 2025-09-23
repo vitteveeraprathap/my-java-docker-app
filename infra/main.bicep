@@ -1,3 +1,4 @@
+// Parameters
 param location string = 'eastus'
 param environment string
 param appServiceName string
