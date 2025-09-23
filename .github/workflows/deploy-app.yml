@@ -1,0 +1,58 @@
+name: Deploy Java App Docker
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  deploy-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment
+        id: env
+        run: |
+          branch="${GITHUB_REF##*/}"
+          if [ "$branch" == "develop" ]; then
+            echo "env_name=qa" >> $GITHUB_OUTPUT
+          elif [ "$branch" == "main" ]; then
+            echo "env_name=prod" >> $GITHUB_OUTPUT
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build Docker Image
+        run: docker build -t myapp:latest .
+
+      - name: Login to ACR
+        run: |
+          az acr login --name myacr${{ steps.env.outputs.env_name }}
+
+      - name: Tag Docker Image
+        run: |
+          docker tag myapp:latest myacr${{ steps.env.outputs.env_name }}.azurecr.io/myapp:latest
+
+      - name: Push Docker Image
+        run: |
+          docker push myacr${{ steps.env.outputs.env_name }}.azurecr.io/myapp:latest
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: javaapp-${{ steps.env.outputs.env_name }}
+          images: myacr${{ steps.env.outputs.env_name }}.azurecr.io/myapp:latest
